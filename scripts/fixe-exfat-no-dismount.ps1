@@ -346,34 +346,26 @@ try {
     $ancestors = Get-FixEAncestorPids
     $maxRepairPasses = 6
     $clean = $false
-    $deepRepairCompleted = $false
 
     for ($repairPass = 1; $repairPass -le $maxRepairPasses; $repairPass++) {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         $state = "C:\Temp\$statePrefix-$stamp-pass$repairPass.json"
         Reset-FixERestartQueue
 
-        $repairMode = if ($repairPass -ge 2) { 'deep' } else { 'fast' }
-
-        Write-Host ('FIXE_REPAIR_PASS_START pass=' + $repairPass + ' mode=' + $repairMode)
+        Write-Host ('FIXE_REPAIR_PASS_START pass=' + $repairPass + ' mode=fast+deep')
         try {
             Move-FixEFoundFolders -Stamp $stamp
             Release-FixEHandles -Ancestors $ancestors -StatePath $state -RepairPass $repairPass
-            Invoke-FixERepair -Mode $repairMode
-            if ($repairMode -eq 'deep') {
-                $deepRepairCompleted = $true
-            }
+            Invoke-FixERepair -Mode 'fast'
+            Invoke-FixERepair -Mode 'deep'
         } finally {
             Restart-FixESavedProcesses
         }
 
         Write-Host ('FIXE_VERIFY_AFTER_RESTART pass=' + $repairPass)
         if (Test-FixEClean) {
-            if ($deepRepairCompleted) {
-                $clean = $true
-                break
-            }
-            Write-Host 'FIXE_FAST_CLEAN_DEEP_REPAIR_STILL_REQUIRED'
+            $clean = $true
+            break
         }
 
         Start-Sleep -Seconds 2

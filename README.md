@@ -22,7 +22,8 @@ The workflow is intentionally aggressive about releasing open `F:` handles, but 
 - Closes Explorer folder windows on `F:` and restarts Explorer if Explorer folder/cache handles were blocking `F:`.
 - Restarts only top-level user apps by full executable path; helper children such as `bridge32.exe`, `bridge64.exe`, and `dllhost.exe` are not restarted directly.
 - Runs `chkdsk F: /f /freeorphanedchains` first and answers `n` to any forced-dismount prompt.
-- Requires at least one deep `chkdsk F: /f /r /freeorphanedchains` repair pass before reporting success, so a fast clean pass alone is not treated as enough.
+- Runs fast repair and deep repair back-to-back in the same front-loaded lock window: `chkdsk F: /f /freeorphanedchains`, then `chkdsk F: /f /r /freeorphanedchains`.
+- Does not restart preserved tools or run the final success verification until the front-loaded fast+deep repair window is complete.
 - Immediately restarts preserved user tools by their original command lines after each repair attempt.
 - Verifies with read-only `chkdsk F:`, `fsutil dirty query F:`, and root `FOUND.*` enumeration after restart.
 - Repeats the short repair window up to 6 times only if verification still reports corruption.
@@ -59,7 +60,7 @@ For `E:`:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\fixe-exfat-no-dismount.ps1
 ```
 
-The local profile functions `ffixf` and `ffixe` are configured outside this repository to launch the generated artifact from `C:\Temp` in a separate minimized Windows PowerShell process, move the caller prompt to `C:\`, and return control immediately. The drive can still be temporarily locked by Windows during the actual `chkdsk /f` or `/r` repair window; that lock is required by Windows for exFAT modification.
+The local profile functions `ffixf` and `ffixe` are configured outside this repository to launch the generated artifact from `C:\Temp` in a separate minimized Windows PowerShell process, move the caller prompt to `C:\`, and return control immediately. The drive can still be temporarily locked by Windows during the front-loaded fast+deep `chkdsk /f` and `/r` repair window; that lock is required by Windows for exFAT modification. After that window ends, the scripts immediately restart preserved tools and verify with read-only checks.
 
 ## Verification from the live repair
 
@@ -80,8 +81,8 @@ STAGED_SCRIPT_EXISTS=True
 After the deep-repair gate was added, the proven `F:` profile path completed with:
 
 ```text
-FIXF_FAST_CLEAN_DEEP_REPAIR_STILL_REQUIRED
-FIXF_REPAIR_PASS_START pass=2 mode=deep
+FIXF_REPAIR_PASS_START pass=1 mode=fast+deep
+FIXF_REPAIR_MODE fast
 FIXF_REPAIR_MODE deep
 FIXF_OK: F: clean, reachable, deep-repair verified; repair lock window was limited to each repair pass
 CALLER_PWD_AFTER=F:\Downloads
