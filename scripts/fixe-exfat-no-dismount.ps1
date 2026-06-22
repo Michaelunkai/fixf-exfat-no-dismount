@@ -110,6 +110,46 @@ function Close-FixEExplorerWindows {
     }
 }
 
+function Close-FixEExplorerFileHandles {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$HandleOutput
+    )
+
+    foreach ($line in $HandleOutput) {
+        if ($line -match '^explorer\.exe\s+pid:\s*(\d+)\s+type:\s+File\s+([0-9A-Fa-f]+):\s+(.+)$') {
+            $pidToClose = [int]$matches[1]
+            $handleToClose = $matches[2]
+            $handlePath = $matches[3]
+            if ($handlePath -eq $script:root -or $handlePath -like ($script:root + '*')) {
+                try {
+                    $closeResult = & $script:handle -accepteula -nobanner -p $pidToClose -c $handleToClose -y 2>&1
+                    Write-Host ('EXPLORER_HANDLE_CLOSE pid=' + $pidToClose + ' handle=' + $handleToClose + ' path=' + $handlePath)
+                    $closeResult
+                } catch {
+                    Write-Host ('EXPLORER_HANDLE_CLOSE_FAIL pid=' + $pidToClose + ' handle=' + $handleToClose + ' ' + $_.Exception.Message)
+                }
+            }
+        }
+    }
+}
+
+function Get-FixEDriveFileHandleLines {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$HandleOutput
+    )
+
+    $driveFileHandleLines = @()
+    foreach ($line in $HandleOutput) {
+        if ($line -match '^.+?\s+pid:\s*\d+\s+type:\s+File\s+[0-9A-Fa-f]+:\s+(.+)$') {
+            $handlePath = $matches[1].Trim()
+            if ($handlePath -eq $script:root -or $handlePath -like ($script:root + '*')) {
+                $driveFileHandleLines += $line
+            }
+        }
+    }
+    $driveFileHandleLines
+}
+
 function Move-FixEFoundFolders {
     param(
         [Parameter(Mandatory = $true)][string]$Stamp
@@ -137,21 +177,22 @@ function Release-FixEHandles {
     $handlesClear = $false
     for ($pass = 1; $pass -le 16; $pass++) {
         $handles = & $handle -accepteula -nobanner $drive 2>&1
-        if (($handles -join "`n") -match 'No matching handles found') {
+        $driveFileHandleLines = @(Get-FixEDriveFileHandleLines -HandleOutput $handles)
+        if (($handles -join "`n") -match 'No matching handles found' -or $driveFileHandleLines.Count -eq 0) {
             Write-Host ('HANDLE_CLEAR repairPass=' + $RepairPass + ' releasePass=' + $pass)
             $handlesClear = $true
             break
         }
 
         $handlePids = @{}
-        foreach ($line in $handles) {
+        foreach ($line in $driveFileHandleLines) {
             if ($line -match 'pid:\s*(\d+)') {
                 $handlePids[[int]$matches[1]] = $true
             }
         }
 
         $explorerHasDriveHandle = $false
-        foreach ($line in $handles) {
+        foreach ($line in $driveFileHandleLines) {
             if ($line -match '^explorer\.exe\s+pid:') {
                 $explorerHasDriveHandle = $true
                 break
@@ -159,11 +200,13 @@ function Release-FixEHandles {
         }
         if ($explorerHasDriveHandle) {
             Close-FixEExplorerWindows
+            Close-FixEExplorerFileHandles -HandleOutput $driveFileHandleLines
         }
 
         $processes = @(Get-CimInstance Win32_Process |
             Where-Object {
-                (!$Ancestors.ContainsKey([int]$_.ProcessId) -or $_.Name -eq 'explorer.exe') -and
+                !$Ancestors.ContainsKey([int]$_.ProcessId) -and
+                $_.Name -ne 'explorer.exe' -and
                 ($handlePids.ContainsKey([int]$_.ProcessId) -or $_.ExecutablePath -like ($root + '*') -or $_.CommandLine -like ('*' + $root + '*'))
             } |
             Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine)
@@ -212,7 +255,7 @@ function Release-FixEHandles {
             CreatedAt = (Get-Date).ToString('o')
             Pass = $pass
             RepairPass = $RepairPass
-            HandleOutput = $handles
+            HandleOutput = $driveFileHandleLines
             Processes = $all
         } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $StatePath -Encoding UTF8
 
@@ -230,8 +273,9 @@ function Release-FixEHandles {
 
     if (!$handlesClear) {
         $last = & $handle -accepteula -nobanner $drive 2>&1
-        if (($last -join "`n") -notmatch 'No matching handles found') {
-            $last
+        $lastDriveFileHandleLines = @(Get-FixEDriveFileHandleLines -HandleOutput $last)
+        if (($last -join "`n") -notmatch 'No matching handles found' -and $lastDriveFileHandleLines.Count -gt 0) {
+            $lastDriveFileHandleLines
             throw ($drive + ' still has open handles after release loop; repair not attempted.')
         }
         Write-Host ('HANDLE_CLEAR repairPass=' + $RepairPass + ' final-check')

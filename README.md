@@ -9,6 +9,8 @@ scripts\fixe-exfat-no-dismount.ps1
 artifacts\fixe-direct-one-liner.txt
 ```
 
+The `E:` variant is shell-safe: it only treats real `type: File` handles under `E:\` as blockers, ignores unrelated shell `Section` handles, and does not terminate `explorer.exe`.
+
 The workflow is intentionally aggressive about releasing open `F:` handles, but it avoids the `/x` forced-dismount flag. It makes the unavoidable `chkdsk /f` lock window as short as possible: stage the repair runner on `C:`, release blockers, run the repair, immediately restart preserved tools, then verify read-only after `F:` is back in normal use. It:
 
 - Downloads Microsoft Sysinternals Handle to `C:\Temp\codex-sysinternals-handle` if missing.
@@ -71,6 +73,18 @@ Volume - F: is NOT Dirty
 F_REACHABLE=True
 ROOT_FOUND_COUNT=0
 STAGED_SCRIPT_EXISTS=True
+```
+
+The proven `E:` path completed with:
+
+```text
+FIXE_OK: E: clean, reachable, verified; repair lock window was limited to each repair pass
+CALLER_PWD_AFTER=E:\
+EXPLORER_BEFORE=12748
+EXPLORER_AFTER=12748
+Volume - E: is NOT Dirty
+E_REACHABLE=True
+ROOT_FOUND_COUNT=0
 ```
 
 ## Important limitation
