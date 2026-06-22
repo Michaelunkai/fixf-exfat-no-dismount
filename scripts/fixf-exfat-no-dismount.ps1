@@ -90,6 +90,24 @@ function Restart-FixFSavedProcesses {
     Reset-FixFRestartQueue
 }
 
+function Close-FixFExplorerWindows {
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        foreach ($window in @($shell.Windows())) {
+            try {
+                $path = $window.Document.Folder.Self.Path
+                if ($path -eq $script:root -or $path -like 'F:\*') {
+                    Write-Host ('EXPLORER_WINDOW_CLOSE ' + $path)
+                    $window.Quit()
+                }
+            } catch {
+            }
+        }
+    } catch {
+        Write-Host ('EXPLORER_WINDOW_CLOSE_SKIP ' + $_.Exception.Message)
+    }
+}
+
 function Move-FixFFoundFolders {
     param(
         [Parameter(Mandatory = $true)][string]$Stamp
@@ -130,9 +148,20 @@ function Release-FixFHandles {
             }
         }
 
+        $explorerHasFHandle = $false
+        foreach ($line in $handles) {
+            if ($line -match '^explorer\.exe\s+pid:') {
+                $explorerHasFHandle = $true
+                break
+            }
+        }
+        if ($explorerHasFHandle) {
+            Close-FixFExplorerWindows
+        }
+
         $processes = @(Get-CimInstance Win32_Process |
             Where-Object {
-                !$Ancestors.ContainsKey([int]$_.ProcessId) -and
+                (!$Ancestors.ContainsKey([int]$_.ProcessId) -or $_.Name -eq 'explorer.exe') -and
                 ($handlePids.ContainsKey([int]$_.ProcessId) -or $_.ExecutablePath -like 'F:\*' -or $_.CommandLine -like '*F:\*')
             } |
             Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine)
@@ -208,9 +237,19 @@ function Release-FixFHandles {
 }
 
 function Invoke-FixFRepair {
+    param(
+        [Parameter(Mandatory = $true)][string]$Mode
+    )
+
     Push-Location C:\
     try {
-        $repair = cmd /c "echo n|C:\Windows\System32\chkdsk.exe F: /f /freeorphanedchains" 2>&1
+        if ($Mode -eq 'deep') {
+            $command = 'echo n|C:\Windows\System32\chkdsk.exe F: /f /r /freeorphanedchains'
+        } else {
+            $command = 'echo n|C:\Windows\System32\chkdsk.exe F: /f /freeorphanedchains'
+        }
+        Write-Host ('FIXF_REPAIR_MODE ' + $Mode)
+        $repair = cmd /c $command 2>&1
         $repair
         $repairText = $repair -join "`n"
         if ($repairText -match 'Cannot lock|cannot continue in read-only mode|Access is denied|Cannot open volume') {
@@ -267,11 +306,13 @@ try {
         $state = "C:\Temp\fixf-state-$stamp-pass$repairPass.json"
         Reset-FixFRestartQueue
 
-        Write-Host ('FIXF_REPAIR_PASS_START pass=' + $repairPass)
+        $repairMode = if ($repairPass -ge 2) { 'deep' } else { 'fast' }
+
+        Write-Host ('FIXF_REPAIR_PASS_START pass=' + $repairPass + ' mode=' + $repairMode)
         try {
             Move-FixFFoundFolders -Stamp $stamp
             Release-FixFHandles -Ancestors $ancestors -StatePath $state -RepairPass $repairPass
-            Invoke-FixFRepair
+            Invoke-FixFRepair -Mode $repairMode
         } finally {
             Restart-FixFSavedProcesses
         }

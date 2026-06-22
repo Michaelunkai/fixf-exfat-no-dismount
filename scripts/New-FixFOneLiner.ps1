@@ -5,7 +5,7 @@ $scriptPath = Join-Path $projectRoot 'scripts\fixf-exfat-no-dismount.ps1'
 $outPath = Join-Path $projectRoot 'artifacts\fixf-direct-one-liner.txt'
 
 $escapedScriptPath = $scriptPath.Replace("'", "''")
-$oneLiner = "`$fixfPwd=(Get-Location).ProviderPath; Set-Location -LiteralPath C:\; [Environment]::CurrentDirectory='C:\'; & C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File '$escapedScriptPath'; `$fixfExit=`$LASTEXITCODE; if(`$fixfPwd -and (Test-Path -LiteralPath `$fixfPwd -ErrorAction SilentlyContinue)){Set-Location -LiteralPath `$fixfPwd; [Environment]::CurrentDirectory=`$fixfPwd}elseif(Test-Path -LiteralPath F:\ -ErrorAction SilentlyContinue){Set-Location -LiteralPath F:\; [Environment]::CurrentDirectory='F:\'}; if(`$fixfExit -ne 0){throw ('FIXF_CHILD_EXIT=' + `$fixfExit)}"
+$oneLiner = "`$fixfPwd=(Get-Location).ProviderPath; Set-Location -LiteralPath C:\; [Environment]::CurrentDirectory='C:\'; `$fixfStage='C:\Temp\fixf-exfat-no-dismount\fixf-exfat-no-dismount.ps1'; New-Item -ItemType Directory -Path (Split-Path -Parent `$fixfStage) -Force|Out-Null; Copy-Item -LiteralPath '$escapedScriptPath' -Destination `$fixfStage -Force; & C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File `$fixfStage; `$fixfExit=`$LASTEXITCODE; if(`$fixfPwd -and (Test-Path -LiteralPath `$fixfPwd -ErrorAction SilentlyContinue)){Set-Location -LiteralPath `$fixfPwd; [Environment]::CurrentDirectory=`$fixfPwd}elseif(Test-Path -LiteralPath F:\ -ErrorAction SilentlyContinue){Set-Location -LiteralPath F:\; [Environment]::CurrentDirectory='F:\'}; if(`$fixfExit -ne 0){throw ('FIXF_CHILD_EXIT=' + `$fixfExit)}"
 
 Set-Content -LiteralPath $outPath -Value $oneLiner -Encoding UTF8
 
