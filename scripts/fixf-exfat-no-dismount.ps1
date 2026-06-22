@@ -108,6 +108,23 @@ function Close-FixFExplorerWindows {
     }
 }
 
+function Get-FixFDriveFileHandleLines {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$HandleOutput
+    )
+
+    $driveFileHandleLines = @()
+    foreach ($line in $HandleOutput) {
+        if ($line -match '^.+?\s+pid:\s*\d+\s+type:\s+File\s+[0-9A-Fa-f]+:\s+(.+)$') {
+            $handlePath = $matches[1].Trim()
+            if ($handlePath -eq $script:root -or $handlePath -like ($script:root + '*')) {
+                $driveFileHandleLines += $line
+            }
+        }
+    }
+    $driveFileHandleLines
+}
+
 function Move-FixFFoundFolders {
     param(
         [Parameter(Mandatory = $true)][string]$Stamp
@@ -135,21 +152,22 @@ function Release-FixFHandles {
     $handlesClear = $false
     for ($pass = 1; $pass -le 16; $pass++) {
         $handles = & $handle -accepteula -nobanner F: 2>&1
-        if (($handles -join "`n") -match 'No matching handles found') {
+        $driveFileHandleLines = @(Get-FixFDriveFileHandleLines -HandleOutput $handles)
+        if (($handles -join "`n") -match 'No matching handles found' -or $driveFileHandleLines.Count -eq 0) {
             Write-Host ('HANDLE_CLEAR repairPass=' + $RepairPass + ' releasePass=' + $pass)
             $handlesClear = $true
             break
         }
 
         $handlePids = @{}
-        foreach ($line in $handles) {
+        foreach ($line in $driveFileHandleLines) {
             if ($line -match 'pid:\s*(\d+)') {
                 $handlePids[[int]$matches[1]] = $true
             }
         }
 
         $explorerHasFHandle = $false
-        foreach ($line in $handles) {
+        foreach ($line in $driveFileHandleLines) {
             if ($line -match '^explorer\.exe\s+pid:') {
                 $explorerHasFHandle = $true
                 break
@@ -210,7 +228,7 @@ function Release-FixFHandles {
             CreatedAt = (Get-Date).ToString('o')
             Pass = $pass
             RepairPass = $RepairPass
-            HandleOutput = $handles
+            HandleOutput = $driveFileHandleLines
             Processes = $all
         } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $StatePath -Encoding UTF8
 
@@ -228,8 +246,9 @@ function Release-FixFHandles {
 
     if (!$handlesClear) {
         $last = & $handle -accepteula -nobanner F: 2>&1
-        if (($last -join "`n") -notmatch 'No matching handles found') {
-            $last
+        $lastDriveFileHandleLines = @(Get-FixFDriveFileHandleLines -HandleOutput $last)
+        if (($last -join "`n") -notmatch 'No matching handles found' -and $lastDriveFileHandleLines.Count -gt 0) {
+            $lastDriveFileHandleLines
             throw 'F: still has open handles after release loop; repair not attempted.'
         }
         Write-Host ('HANDLE_CLEAR repairPass=' + $RepairPass + ' final-check')
@@ -300,6 +319,7 @@ try {
     $ancestors = Get-FixFAncestorPids
     $maxRepairPasses = 6
     $clean = $false
+    $deepRepairCompleted = $false
 
     for ($repairPass = 1; $repairPass -le $maxRepairPasses; $repairPass++) {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -313,14 +333,20 @@ try {
             Move-FixFFoundFolders -Stamp $stamp
             Release-FixFHandles -Ancestors $ancestors -StatePath $state -RepairPass $repairPass
             Invoke-FixFRepair -Mode $repairMode
+            if ($repairMode -eq 'deep') {
+                $deepRepairCompleted = $true
+            }
         } finally {
             Restart-FixFSavedProcesses
         }
 
         Write-Host ('FIXF_VERIFY_AFTER_RESTART pass=' + $repairPass)
         if (Test-FixFClean) {
-            $clean = $true
-            break
+            if ($deepRepairCompleted) {
+                $clean = $true
+                break
+            }
+            Write-Host 'FIXF_FAST_CLEAN_DEEP_REPAIR_STILL_REQUIRED'
         }
 
         Start-Sleep -Seconds 2
@@ -330,7 +356,7 @@ try {
         throw ('FIXF_FAILED: corruption remains after ' + $maxRepairPasses + ' shortest-lock repair passes.')
     }
 
-    'FIXF_OK: F: clean, reachable, verified; repair lock window was limited to each repair pass'
+    'FIXF_OK: F: clean, reachable, deep-repair verified; repair lock window was limited to each repair pass'
 } finally {
     try {
         Restore-FixFOriginalLocation

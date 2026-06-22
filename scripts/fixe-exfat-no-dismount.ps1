@@ -346,6 +346,7 @@ try {
     $ancestors = Get-FixEAncestorPids
     $maxRepairPasses = 6
     $clean = $false
+    $deepRepairCompleted = $false
 
     for ($repairPass = 1; $repairPass -le $maxRepairPasses; $repairPass++) {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -359,14 +360,20 @@ try {
             Move-FixEFoundFolders -Stamp $stamp
             Release-FixEHandles -Ancestors $ancestors -StatePath $state -RepairPass $repairPass
             Invoke-FixERepair -Mode $repairMode
+            if ($repairMode -eq 'deep') {
+                $deepRepairCompleted = $true
+            }
         } finally {
             Restart-FixESavedProcesses
         }
 
         Write-Host ('FIXE_VERIFY_AFTER_RESTART pass=' + $repairPass)
         if (Test-FixEClean) {
-            $clean = $true
-            break
+            if ($deepRepairCompleted) {
+                $clean = $true
+                break
+            }
+            Write-Host 'FIXE_FAST_CLEAN_DEEP_REPAIR_STILL_REQUIRED'
         }
 
         Start-Sleep -Seconds 2
@@ -376,7 +383,7 @@ try {
         throw ('FIXE_FAILED: corruption remains after ' + $maxRepairPasses + ' shortest-lock repair passes.')
     }
 
-    'FIXE_OK: ' + $drive + ' clean, reachable, verified; repair lock window was limited to each repair pass'
+    'FIXE_OK: ' + $drive + ' clean, reachable, deep-repair verified; repair lock window was limited to each repair pass'
 } finally {
     try {
         Restore-FixEOriginalLocation
