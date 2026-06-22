@@ -1,1 +1,1 @@
-﻿C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\System\Storage\Repair\PowerShell\Automation\fixf-exfat-no-dismount\scripts\fixf-exfat-no-dismount.ps1"
+﻿Set-Location -LiteralPath C:\; [Environment]::CurrentDirectory='C:\'; & C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\System\Storage\Repair\PowerShell\Automation\fixf-exfat-no-dismount\scripts\fixf-exfat-no-dismount.ps1"

@@ -8,6 +8,10 @@ if (!(Test-Path -LiteralPath $root)) {
     throw 'F: is not reachable'
 }
 
+if ((Get-Location).Provider.Name -eq 'FileSystem' -and (Get-Location).ProviderPath -like 'F:\*') {
+    Set-Location -LiteralPath 'C:\'
+}
+
 if (!(Test-Path -LiteralPath $handle)) {
     $handleDir = Split-Path -Parent $handle
     New-Item -ItemType Directory -Path $handleDir -Force | Out-Null
@@ -45,10 +49,12 @@ Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue |
     }
 
 try {
-    for ($pass = 1; $pass -le 8; $pass++) {
+    $handlesClear = $false
+    for ($pass = 1; $pass -le 16; $pass++) {
         $handles = & $handle -accepteula -nobanner F: 2>&1
         if (($handles -join "`n") -match 'No matching handles found') {
             Write-Host ('HANDLE_CLEAR pass=' + $pass)
+            $handlesClear = $true
             break
         }
 
@@ -68,9 +74,19 @@ try {
 
         $all += $processes
         foreach ($process in $processes) {
-            if ($process.CommandLine -and $process.Name -notin @('powershell.exe', 'pwsh.exe', 'adb.exe', 'docker-buildx.exe') -and !$seen.ContainsKey($process.CommandLine)) {
+            if ($process.CommandLine -and $process.Name -notin @('powershell.exe', 'pwsh.exe', 'adb.exe', 'docker-buildx.exe', 'explorer.exe') -and !$seen.ContainsKey($process.CommandLine)) {
                 $restart += $process
                 $seen[$process.CommandLine] = $true
+            }
+            if ($process.Name -eq 'explorer.exe' -and !$seen.ContainsKey('explorer.exe')) {
+                $restart += [pscustomobject]@{
+                    ProcessId = $process.ProcessId
+                    ParentProcessId = $process.ParentProcessId
+                    Name = 'explorer.exe'
+                    ExecutablePath = 'C:\Windows\explorer.exe'
+                    CommandLine = 'C:\Windows\explorer.exe'
+                }
+                $seen['explorer.exe'] = $true
             }
         }
 
@@ -91,11 +107,15 @@ try {
         }
 
         Start-Sleep -Seconds 2
-        if ($pass -eq 8) {
-            $last = & $handle -accepteula -nobanner F: 2>&1
+    }
+
+    if (!$handlesClear) {
+        $last = & $handle -accepteula -nobanner F: 2>&1
+        if (($last -join "`n") -notmatch 'No matching handles found') {
             $last
             throw 'F: still has open handles after release loop; repair not attempted.'
         }
+        Write-Host 'HANDLE_CLEAR final-check'
     }
 
     Push-Location C:\

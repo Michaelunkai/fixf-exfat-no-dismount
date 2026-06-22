@@ -4,7 +4,7 @@ $projectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $scriptPath = Join-Path $projectRoot 'scripts\fixf-exfat-no-dismount.ps1'
 $outPath = Join-Path $projectRoot 'artifacts\fixf-direct-one-liner.txt'
 
-$oneLiner = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+$oneLiner = "Set-Location -LiteralPath C:\; [Environment]::CurrentDirectory='C:\'; & C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
 
 Set-Content -LiteralPath $outPath -Value $oneLiner -Encoding UTF8
 
