@@ -2,6 +2,13 @@
 
 PowerShell 5 tooling for repairing `F:` exFAT corruption without using `chkdsk /x`.
 
+An `E:` variant is also available with the same behavior:
+
+```text
+scripts\fixe-exfat-no-dismount.ps1
+artifacts\fixe-direct-one-liner.txt
+```
+
 The workflow is intentionally aggressive about releasing open `F:` handles, but it avoids the `/x` forced-dismount flag. It makes the unavoidable `chkdsk /f` lock window as short as possible: stage the repair runner on `C:`, release blockers, run the repair, immediately restart preserved tools, then verify read-only after `F:` is back in normal use. It:
 
 - Downloads Microsoft Sysinternals Handle to `C:\Temp\codex-sysinternals-handle` if missing.
@@ -30,12 +37,24 @@ The generated direct launcher one-liner is written to:
 artifacts\fixf-direct-one-liner.txt
 ```
 
+The generated `E:` launcher one-liner is written to:
+
+```text
+artifacts\fixe-direct-one-liner.txt
+```
+
 Use the generated one-liner when your prompt is already inside `F:\...`. It remembers the caller's current directory, switches to `C:\`, copies the repair script to `C:\Temp`, runs that staged copy, and restores the original directory afterward when it is reachable.
 
 ## Run the readable script
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\fixf-exfat-no-dismount.ps1
+```
+
+For `E:`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\fixe-exfat-no-dismount.ps1
 ```
 
 ## Verification from the live repair
