@@ -1,3 +1,5 @@
+Set-Location -LiteralPath 'C:\'
+[Environment]::CurrentDirectory = 'C:\'
 $ErrorActionPreference = 'Stop'
 
 $drive = 'F:'
@@ -6,10 +8,6 @@ $handle = 'C:\Temp\codex-sysinternals-handle\handle64.exe'
 
 if (!(Test-Path -LiteralPath $root)) {
     throw 'F: is not reachable'
-}
-
-if ((Get-Location).Provider.Name -eq 'FileSystem' -and (Get-Location).ProviderPath -like 'F:\*') {
-    Set-Location -LiteralPath 'C:\'
 }
 
 if (!(Test-Path -LiteralPath $handle)) {

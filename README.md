@@ -7,7 +7,7 @@ The workflow is intentionally aggressive about releasing open `F:` handles, but 
 - Downloads Microsoft Sysinternals Handle to `C:\Temp\codex-sysinternals-handle` if missing.
 - Preserves `FOUND.###` recovery folders by moving them to `F:\_chkdsk_recovered_quarantine`.
 - Saves handle/process state to `C:\Temp\fixf-state-*.json`.
-- Switches its own working directory to `C:\` when launched from `F:\...`, so the repair process does not keep `F:` open itself.
+- First switches its own working directory and process current directory to `C:\`, so the repair process does not keep `F:` open itself.
 - Stops processes holding `F:` handles, excluding the current PowerShell ancestor chain.
 - Restarts Explorer if Explorer folder windows/cache handles were blocking `F:`.
 - Runs `chkdsk F: /f /freeorphanedchains` and answers `n` to any forced-dismount prompt.
