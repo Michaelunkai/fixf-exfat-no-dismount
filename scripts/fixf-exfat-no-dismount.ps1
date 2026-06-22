@@ -35,6 +35,7 @@ $state = "C:\Temp\fixf-state-$stamp.json"
 $restart = @()
 $seen = @{}
 $all = @()
+$noRestartNames = @('powershell.exe', 'pwsh.exe', 'adb.exe', 'docker-buildx.exe', 'dllhost.exe', 'bridge32.exe', 'bridge64.exe', 'conhost.exe', 'handle64.exe', 'handle.exe')
 
 $quarantine = Join-Path $root '_chkdsk_recovered_quarantine'
 Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue |
@@ -63,18 +64,51 @@ try {
             }
         }
 
-        $processes = Get-CimInstance Win32_Process |
+        $processes = @(Get-CimInstance Win32_Process |
             Where-Object {
                 !$ancestors.ContainsKey([int]$_.ProcessId) -and
                 ($handlePids.ContainsKey([int]$_.ProcessId) -or $_.ExecutablePath -like 'F:\*' -or $_.CommandLine -like '*F:\*')
             } |
-            Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine
+            Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine)
+
+        $selected = @{}
+        foreach ($process in $processes) {
+            $selected[[int]$process.ProcessId] = $process
+        }
+
+        foreach ($process in @($processes)) {
+            $parentId = [int]$process.ParentProcessId
+            while ($parentId -and !$ancestors.ContainsKey($parentId) -and !$selected.ContainsKey($parentId)) {
+                $parent = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $parentId) -ErrorAction SilentlyContinue |
+                    Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine
+                if (!$parent) {
+                    break
+                }
+                if ($parent.ExecutablePath -like 'F:\*' -or $parent.CommandLine -like '*F:\*') {
+                    $selected[[int]$parent.ProcessId] = $parent
+                    $processes += $parent
+                    $parentId = [int]$parent.ParentProcessId
+                } else {
+                    break
+                }
+            }
+        }
+
+        $processes = @($processes | Sort-Object ProcessId -Unique)
+        $selectedIds = @{}
+        foreach ($process in $processes) {
+            $selectedIds[[int]$process.ProcessId] = $true
+        }
 
         $all += $processes
         foreach ($process in $processes) {
-            if ($process.CommandLine -and $process.Name -notin @('powershell.exe', 'pwsh.exe', 'adb.exe', 'docker-buildx.exe', 'explorer.exe') -and !$seen.ContainsKey($process.CommandLine)) {
-                $restart += $process
-                $seen[$process.CommandLine] = $true
+            $isChildOfSelectedProcess = $selectedIds.ContainsKey([int]$process.ParentProcessId)
+            if (!$isChildOfSelectedProcess -and $process.ExecutablePath -and $process.Name -notin $noRestartNames -and $process.Name -ne 'explorer.exe') {
+                $restartKey = $process.ExecutablePath + '|' + $process.CommandLine
+                if (!$seen.ContainsKey($restartKey)) {
+                    $restart += $process
+                    $seen[$restartKey] = $true
+                }
             }
             if ($process.Name -eq 'explorer.exe' -and !$seen.ContainsKey('explorer.exe')) {
                 $restart += [pscustomobject]@{
@@ -142,9 +176,13 @@ try {
     }
 } finally {
     foreach ($process in $restart) {
-        if ($process.CommandLine) {
+        if ($process.CommandLine -or $process.ExecutablePath) {
             try {
-                $result = ([wmiclass]'Win32_Process').Create($process.CommandLine, 'C:\', $null)
+                $commandLine = $process.CommandLine
+                if (!$commandLine -or ($process.ExecutablePath -and $commandLine -notmatch '^[A-Za-z]:\\|^"')) {
+                    $commandLine = '"' + $process.ExecutablePath + '"'
+                }
+                $result = ([wmiclass]'Win32_Process').Create($commandLine, 'C:\', $null)
                 Write-Host ('RESTART ' + $process.Name + ' oldpid=' + $process.ProcessId + ' result=' + $result.ReturnValue + ' newpid=' + $result.ProcessId)
             } catch {
                 Write-Host ('RESTART_FAIL ' + $process.Name + ' oldpid=' + $process.ProcessId + ' ' + $_.Exception.Message)

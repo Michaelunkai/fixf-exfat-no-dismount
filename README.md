@@ -10,6 +10,7 @@ The workflow is intentionally aggressive about releasing open `F:` handles, but 
 - First switches its own working directory and process current directory to `C:\`, so the repair process does not keep `F:` open itself.
 - Stops processes holding `F:` handles, excluding the current PowerShell ancestor chain.
 - Restarts Explorer if Explorer folder windows/cache handles were blocking `F:`.
+- Restarts only top-level user apps by full executable path; helper children such as `bridge32.exe`, `bridge64.exe`, and `dllhost.exe` are not restarted directly.
 - Runs `chkdsk F: /f /freeorphanedchains` and answers `n` to any forced-dismount prompt.
 - Verifies with read-only `chkdsk F:`, `fsutil dirty query F:`, and root `FOUND.*` enumeration.
 - Restarts preserved user tools by their original command lines.
